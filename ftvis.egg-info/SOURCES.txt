@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+ftvis/__init__.py
+ftvis/__init__.pyi
+ftvis/app.pyi
+ftvis/core.py
+ftvis/core.pyi
+ftvis/viz.py
+ftvis/viz.pyi
+ftvis.egg-info/PKG-INFO
+ftvis.egg-info/SOURCES.txt
+ftvis.egg-info/dependency_links.txt
+ftvis.egg-info/requires.txt
+ftvis.egg-info/top_level.txt
+tests/test_core.py

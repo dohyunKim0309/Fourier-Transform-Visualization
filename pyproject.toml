@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ftvis"
+version = "0.1.0.dev0"
+description = "Fourier Transform Visualizer — 연속 시간 푸리에 변환을 3차원 복소공간에서 인터랙티브하게 탐험하는 교육용 도구."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Dohyun Kim", email = "dkim7800@gmail.com" },
+]
+keywords = ["fourier", "signal-processing", "education", "visualization", "plotly"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+dependencies = [
+    "numpy>=1.24",
+    "plotly>=5.18",
+]
+
+[project.optional-dependencies]
+notebook = [
+    "jupyter>=1.0",
+    "ipywidgets>=8.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-timeout>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/dkim7800/Signals_Systems"
+Documentation = "https://github.com/dkim7800/Signals_Systems/blob/main/DESIGN.md"
+Repository = "https://github.com/dkim7800/Signals_Systems"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["ftvis*"]
+exclude = ["tests*", "examples*"]
+
+[tool.setuptools.package-data]
+ftvis = ["*.pyi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"

@@ -1,0 +1,14 @@
+# ftvis runtime + notebook dependencies.
+# pyproject.toml의 [project.dependencies] + [project.optional-dependencies.notebook]과 일치.
+# 빠른 venv 셋업용:  pip install -r requirements.txt
+# 패키지 자체까지 editable로 설치하려면:  pip install -e .[notebook]
+
+# Layer 1 (core)
+numpy>=1.24
+
+# Layer 2 (viz)
+plotly>=5.18
+
+# 노트북 실행용
+jupyter>=1.0
+ipywidgets>=8.0
