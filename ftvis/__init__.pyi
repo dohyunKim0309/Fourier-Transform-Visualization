@@ -15,10 +15,15 @@ from ftvis.core import (
 from ftvis.viz import (
     ForwardIntegralPlot as ForwardIntegralPlot,
     InverseAccumulationPlot as InverseAccumulationPlot,
+    InverseIntegral3DPlot as InverseIntegral3DPlot,
+    InverseWindingHelixPlot as InverseWindingHelixPlot,
+    PartialIntegralComparisonPlot as PartialIntegralComparisonPlot,
+    PartitionedAccumulationPlot as PartitionedAccumulationPlot,
     SignalPlot as SignalPlot,
     SpectrumPlot as SpectrumPlot,
     WindingHelixPlot as WindingHelixPlot,
     WoundSignalPlot as WoundSignalPlot,
+    WoundSpectrumPlot as WoundSpectrumPlot,
 )
 from ftvis.app import (
     ExplorerConfig as ExplorerConfig,

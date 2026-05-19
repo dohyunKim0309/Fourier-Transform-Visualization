@@ -257,3 +257,256 @@ class InverseAccumulationPlot(PlotPanel):
     def update(self, wound: WoundSignal, t_index: int) -> None:
         """Mode A 인터페이스용 no-op."""
         ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 역변환용 (b') Inverse winding helix — ω축 위의 단위 헬릭스
+# ─────────────────────────────────────────────────────────────────────────────
+
+class InverseWindingHelixPlot(PlotPanel):
+    """
+    e^(+jωt_fix)의 3D 단위 헬릭스 — 역변환 winding 회전자.
+
+    순변환에서 `e^(-jωt)`가 *t축 위의 헬릭스*였듯이, 역변환에서는
+    `e^(+jωt_fix)`가 *ω축 위의 헬릭스*다. 각속도가 `t_fix`인 단위 헬릭스.
+
+    Mode A의 ``update(wound, t_index)``는 no-op이고, 데이터는
+    ``show_helix(omegas, t_fix)``로 직접 박는다.
+    """
+
+    def __init__(self) -> None: ...
+
+    @property
+    def figure(self) -> go.Figure: ...
+
+    def show_helix(self, omegas: np.ndarray, t_fix: float) -> None:
+        """
+        Parameters
+        ----------
+        omegas : NDArray[float64]
+            ω 범위.
+        t_fix : float
+            고정 시간 위치. 헬릭스의 각속도.
+        """
+        ...
+
+    def update(self, wound: WoundSignal, t_index: int) -> None:
+        """Mode A 인터페이스용 no-op."""
+        ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 역변환용 (d') Inverse integral 3D — ω축 위의 누적 적분 trail
+# ─────────────────────────────────────────────────────────────────────────────
+
+class InverseIntegral3DPlot(PlotPanel):
+    """
+    역변환 누적 적분 ``(1/2π)·∫ X(jω)·e^(jωt_fix) dω``를 3D 누적 trail로.
+
+    순변환 ``ForwardIntegralPlot``의 ω-domain 대응물. 좌표계: ω축 + 복소평면.
+    각 ω에서 원점에서 누적 끝점으로 향하는 화살표와 trail.
+
+    Parameters
+    ----------
+    show_complex_plane_inset : bool, default True
+        오른쪽에 작은 2D 복소평면 inset 표시.
+    trail_alpha : float, default 0.4
+        끝점 궤적의 투명도.
+    """
+
+    def __init__(
+        self,
+        *,
+        show_complex_plane_inset: bool = True,
+        trail_alpha: float = 0.4,
+    ) -> None: ...
+
+    @property
+    def figure(self) -> go.Figure: ...
+
+    def show_accumulation(
+        self,
+        omegas: np.ndarray,
+        accumulated: np.ndarray,
+        *,
+        progress_index: int | None = None,
+        flatten_noise: bool = True,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        omegas : NDArray[float64]
+            누적 *순서*에 따라 정렬된 ω 배열 (monotonic 권장).
+        accumulated : ComplexArray
+            머리 잇기 누적합. accumulated[-1] ≈ x(t_fix).
+        progress_index : int, optional
+            None이면 전부. 정수면 처음 k+1개만.
+        flatten_noise : bool, default True
+            trail의 Re/Im 한 쪽이 max|r| 대비 1e-9 이하면 그 축 범위를 살아있는
+            축과 같게 강제해 평면에 누여 보이게 함. SpectrumPlot의
+            ``flatten_noise``와 동일 패턴.
+        """
+        ...
+
+    def update(self, wound: WoundSignal, t_index: int) -> None:
+        """Mode A 인터페이스용 no-op."""
+        ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PartitionedAccumulationPlot — 단위벡터 + 누적 호 시각화
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PartitionedAccumulationPlot(PlotPanel):
+    """
+    한 신호 구간의 적분을 *단위원 위 단위벡터들의 합 × dt* 로 보여주는 2D 패널.
+
+    rect→sinc 같은 적분의 기하적 유도에 쓰임. ``boundary`` 인자로 "한 주기에
+    cancel되는 묶음(dim) + 잔여 호(bright)" 분기 가능.
+
+    Parameters
+    ----------
+    show_unit_circle : bool, default True
+        점선 단위원 표시.
+    show_chord : bool, default True
+        잔여 호의 양 끝점을 잇는 chord. 길이 = 2sin(잔여각/2).
+    arrow_width : float, default 1.0
+        단위벡터 화살표 선 굵기.
+    """
+
+    def __init__(
+        self,
+        *,
+        show_unit_circle: bool = True,
+        show_chord: bool = True,
+        arrow_width: float = 1.0,
+    ) -> None: ...
+
+    @property
+    def figure(self) -> go.Figure: ...
+
+    def show_partition(
+        self,
+        unit_vectors: np.ndarray,
+        dt: float,
+        *,
+        boundary: int = 0,
+        label: str | None = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        unit_vectors : ComplexArray, shape (N,)
+            단위원 위 N개 점 ``e^(-jωt_k)``.
+        dt : float
+            적분 가중치. ``arrows = unit_vectors * dt``.
+        boundary : int, default 0
+            dim/bright 경계 인덱스. 0이면 전부 bright (Phase 1).
+        label : str, optional
+            패널 제목.
+        x_range, y_range : (float, float), optional
+            축 범위.
+        """
+        ...
+
+    def update(self, wound: WoundSignal, t_index: int) -> None: ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WoundSpectrumPlot — X(jω)·e^(-jωα) 3D helix + |X| 회전체 envelope
+# ─────────────────────────────────────────────────────────────────────────────
+
+class WoundSpectrumPlot(PlotPanel):
+    """
+    ``X(jω)·e^(-jωα)``의 3D 시각화. 시간 도메인 ``WoundSignalPlot``에 대응되는
+    주파수 도메인 버전. helix 본체 + ``|X(jω)|`` 회전체 envelope.
+
+    Parameters
+    ----------
+    show_envelope : bool, default True
+        ``|X(jω)|`` 회전체 envelope 표시.
+    envelope_alpha : float, default 0.15
+        envelope 투명도.
+    """
+
+    def __init__(
+        self,
+        *,
+        show_envelope: bool = True,
+        envelope_alpha: float = 0.15,
+    ) -> None: ...
+
+    @property
+    def figure(self) -> go.Figure: ...
+
+    def show_wound_spectrum(
+        self,
+        omegas: np.ndarray,
+        X: np.ndarray,
+        alpha: float = 0.0,
+        *,
+        label: str | None = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        omegas : NDArray[float64]
+        X : ComplexArray
+            원본 spectrum.
+        alpha : float, default 0.0
+            linear phase. ``X·e^(-jωα)``. 0이면 X 그대로.
+        label : str, optional
+            제목.
+        """
+        ...
+
+    def update(self, wound: WoundSignal, t_index: int) -> None: ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PartialIntegralComparisonPlot — 여러 partial 적분 trail을 한 3D scene에 비교
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PartialIntegralComparisonPlot(PlotPanel):
+    """
+    여러 partial 적분 trail을 한 3D scene에 함께 그려 비교.
+
+    좌표: x = ω, (y, z) = (Re partial, Im partial). Time shift property 시각
+    증명, 다양한 적분 핵의 비교 등에 적합.
+    """
+
+    def __init__(self) -> None: ...
+
+    @property
+    def figure(self) -> go.Figure: ...
+
+    def show_trails(
+        self,
+        omegas: np.ndarray,
+        trails: list[dict],
+        *,
+        label: str | None = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        omegas : NDArray[float64]
+            균등 ω 분할.
+        trails : list of dict
+            각 dict 키:
+
+            - ``'kernel'`` : ComplexArray — 적분 핵.
+            - ``'t'`` : float — ``e^(jωt)`` 곱.
+            - ``'label'`` : str — legend.
+            - ``'color'`` : str — 선 색.
+            - ``'width'`` : float (optional, default 4.0).
+            - ``'dash'`` : str (optional) — plotly dash style.
+            - ``'marker_symbol'`` : str (optional, default 'circle').
+        label : str, optional
+            전체 제목.
+        """
+        ...
+
+    def update(self, wound: WoundSignal, t_index: int) -> None: ...

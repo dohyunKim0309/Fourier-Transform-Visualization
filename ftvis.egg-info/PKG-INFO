@@ -122,7 +122,8 @@ sig = signals.gaussian(sigma=1.0, center=5.0) * signals.cosine(omega=3*np.pi)
 ## 데모 노트북
 
 - [`examples/01_intro.ipynb`](./examples/01_intro.ipynb) — 복소 정현파에서 출발해 cos/sin → 감쇠 정현파 → 짝/홀 대칭 → time shift까지 점진적으로 쌓아 올리는 Mode A 투어. ω 매칭/직교/quasi-주기 미스매치를 모두 한 노트북 안에서 비교.
-- [`examples/02_inverse.ipynb`](./examples/02_inverse.ipynb) — Mode B의 역변환을 화살표 머리잇기로 직접 누적해 보이는 데모. 여러 `t_fix`에서 누적 끝점이 `x(t_fix)`로 수렴하는 정확도가 10⁻¹⁴ 수준.
+- [`examples/02_inverse.ipynb`](./examples/02_inverse.ipynb) — *다양한 신호*의 역변환 메커니즘. 가우시안·causal exp·two-sided exp 등을 SpectrumPlot과 InverseAccumulationPlot으로 분석. 화살표 머리잇기 누적, paired_by_abs 정렬에 의한 켤레 cancel. 여러 `t_fix`에서 `x(t_fix)` 복원 정확도 10⁻¹⁴ 수준.
+- [`examples/03_rect_sinc.ipynb`](./examples/03_rect_sinc.ipynb) — `rect_W(t)` 한 신호의 *순방향+역방향* 양방향 분석. (Phase 1) sin(ωW) 항이 단위원 호의 chord에서 나옴 — (Phase 2) 1/ω 감쇠가 호 위 단위벡터의 시간 밀도에서 나옴 — (Phase 3) 두 항이 합쳐져 sinc — (Phase 4) sinc를 다시 rect로 역변환 — (Phase 5) linear phase = time shift property를 두 적분의 *동일한 화살표 시퀀스*로 시각 증명.
 
 ## 아키텍처 요약
 

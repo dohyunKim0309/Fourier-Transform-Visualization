@@ -22,10 +22,15 @@ __version__ = "0.1.0.dev0"
 _VIZ_NAMES = (
     "ForwardIntegralPlot",
     "InverseAccumulationPlot",
+    "InverseIntegral3DPlot",
+    "InverseWindingHelixPlot",
+    "PartialIntegralComparisonPlot",
+    "PartitionedAccumulationPlot",
     "SignalPlot",
     "SpectrumPlot",
     "WindingHelixPlot",
     "WoundSignalPlot",
+    "WoundSpectrumPlot",
 )
 
 

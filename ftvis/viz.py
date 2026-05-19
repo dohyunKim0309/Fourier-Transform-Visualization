@@ -865,3 +865,754 @@ class InverseAccumulationPlot(PlotPanel):
     def update(self, wound: WoundSignal, t_index: int) -> None:
         """Mode A 인터페이스용 no-op."""
         pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PartitionedAccumulationPlot — 단위벡터 + 누적 호 시각화
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 한 신호 구간의 적분을 *단위원 위 단위벡터들의 합 × dt* 로 분해해 보여주는
+# 2D 패널. rect→sinc 같은 적분의 기하적 유도에 쓰인다.
+#
+#   unit_vectors[k] = e^(-jωt_k)   (단위원 위 점)
+#   arrows[k]       = unit_vectors[k] * dt   (실제 누적 항)
+#   cum[k]          = Σ arrows[0..k-1]       (Re축 위 점에 도달하는 trail)
+#
+# boundary 인자로 "한 주기에 cancel되는 묶음(dim) + 잔여 호(bright)" 분기 가능.
+# Phase 1처럼 분기 없는 경우 boundary=0.
+
+class PartitionedAccumulationPlot(PlotPanel):
+    """
+    단위원 위 단위벡터 화살표 + 누적 호를 한 복소평면에 그린다.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from ftvis import PartitionedAccumulationPlot
+    >>> N, omega, W = 24, np.pi/12, 2.0
+    >>> dt = 2*W / N
+    >>> t = -W + np.arange(N) * dt + dt/2
+    >>> uv = np.exp(-1j * omega * t)
+    >>> p = PartitionedAccumulationPlot()
+    >>> p.show_partition(uv, dt, label='θ = π/6')
+    >>> p.figure  # doctest: +SKIP
+
+    Parameters
+    ----------
+    show_unit_circle : bool, default True
+        점선 단위원 표시.
+    show_chord : bool, default True
+        잔여 호의 양 끝(단위원 위)을 잇는 chord 표시. 길이 = 2sin(잔여각/2).
+    arrow_width : float, default 1.0
+        단위벡터 화살표 선 굵기.
+    """
+
+    # 색상은 _GREEN (잔여/메인), _DIM (한 주기 묶음), _BLUE (chord), _ORANGE (끝점) 사용
+
+    def __init__(
+        self,
+        *,
+        show_unit_circle: bool = True,
+        show_chord: bool = True,
+        arrow_width: float = 1.0,
+    ) -> None:
+        super().__init__()
+        self.show_unit_circle = show_unit_circle
+        self.show_chord = show_chord
+        self.arrow_width = arrow_width
+
+    def _build_figure(self) -> go.Figure:
+        # 가로로 길어 누적 호 끝점이 들어오게. 데이터에 맞춰 show_partition에서 갱신.
+        fig = _new_2d_figure(title="(partitioned accumulation)", height=320)
+        # 정사각 픽셀 비율 (Re/Im 같은 스케일)
+        fig.update_layout(
+            xaxis=dict(_2D_AXIS, title="Re", scaleanchor="y", scaleratio=1),
+            yaxis=dict(_2D_AXIS, title="Im"),
+        )
+        return fig
+
+    def show_partition(
+        self,
+        unit_vectors: np.ndarray,
+        dt: float,
+        *,
+        boundary: int = 0,
+        label: Optional[str] = None,
+        x_range: Optional[tuple[float, float]] = None,
+        y_range: Optional[tuple[float, float]] = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        unit_vectors : ComplexArray, shape (N,)
+            단위원 위 단위벡터들. ``e^(-jωt_k)`` 형태.
+        dt : float
+            적분 가중치. ``arrows = unit_vectors * dt``, 누적합이 적분값.
+        boundary : int, default 0
+            dim(앞)/bright(뒤) 경계 인덱스. 한 주기당 단위벡터 수. 0이면 전부 bright.
+        label : str, optional
+            패널 제목. None이면 적분값 자동 표기.
+        x_range, y_range : (float, float), optional
+            축 범위 강제. None이면 데이터에서 자동.
+        """
+        fig = self.figure
+        fig.data = ()  # 데이터 비우고 다시 그림 (여러 번 show_partition 호출 시)
+
+        unit_vectors = np.asarray(unit_vectors, dtype=np.complex128)
+        N = len(unit_vectors)
+        boundary = int(np.clip(boundary, 0, N))
+        arrows = unit_vectors * float(dt)
+        cum = np.concatenate([[0+0j], np.cumsum(arrows)])
+
+        # 단위원
+        if self.show_unit_circle:
+            th = np.linspace(0, 2*np.pi, 200)
+            fig.add_trace(go.Scatter(
+                x=np.cos(th), y=np.sin(th), mode="lines",
+                line=dict(color=_AXIS, width=1, dash="dot"),
+                hoverinfo="skip", showlegend=False,
+            ))
+
+        # 한 주기 묶음 단위벡터 화살표 (회색 dim)
+        if boundary > 0:
+            uv_dim = unit_vectors[:boundary]
+            self._add_radial_arrows(fig, uv_dim, color=_GRID, opacity=0.6,
+                                     width=self.arrow_width, marker_size=3)
+
+        # 잔여 단위벡터 화살표 (강조 초록)
+        uv_res = unit_vectors[boundary:]
+        if len(uv_res) > 0:
+            self._add_radial_arrows(fig, uv_res, color=_GREEN, opacity=0.9,
+                                     width=self.arrow_width * 1.2,
+                                     marker_size=4)
+
+        # chord (잔여 호의 양 끝점)
+        if self.show_chord and len(uv_res) > 0:
+            p0, p1 = complex(uv_res[0]), complex(uv_res[-1])
+            fig.add_trace(go.Scatter(
+                x=[p0.real, p1.real], y=[p0.imag, p1.imag],
+                mode="lines+markers",
+                line=dict(color=_BLUE, width=3),
+                marker=dict(color=_BLUE, size=8),
+                hoverinfo="skip", showlegend=False,
+            ))
+
+        # dim 누적 호 (한 주기 묶음)
+        if boundary > 0:
+            fig.add_trace(go.Scatter(
+                x=cum.real[:boundary+1], y=cum.imag[:boundary+1],
+                mode="lines",
+                line=dict(color=_GRID, width=2.5),
+                hoverinfo="skip", showlegend=False,
+            ))
+
+        # bright 누적 호 (잔여)
+        fig.add_trace(go.Scatter(
+            x=cum.real[boundary:], y=cum.imag[boundary:],
+            mode="lines",
+            line=dict(color=_GREEN, width=3.5),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+        # 끝점 = 적분값
+        fig.add_trace(go.Scatter(
+            x=[float(cum.real[-1])], y=[float(cum.imag[-1])],
+            mode="markers",
+            marker=dict(color=_ORANGE, size=10, symbol="circle"),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+        # 제목
+        integ = complex(cum[-1])
+        if label is None:
+            label = f"∫ = {integ.real:+.4f}{integ.imag:+.4f}j"
+        fig.layout.title.text = label
+
+        # 축 범위
+        if x_range is not None:
+            fig.layout.xaxis.range = list(x_range)
+        if y_range is not None:
+            fig.layout.yaxis.range = list(y_range)
+
+    @staticmethod
+    def _add_radial_arrows(
+        fig: go.Figure,
+        unit_vectors: np.ndarray,
+        *,
+        color: str,
+        opacity: float,
+        width: float,
+        marker_size: int,
+    ) -> None:
+        """원점에서 unit_vectors 끝점까지 가는 N개 화살표를 한 trace로 추가."""
+        n = len(unit_vectors)
+        xs = np.empty(3*n)
+        ys = np.empty(3*n)
+        xs[0::3] = 0
+        xs[1::3] = unit_vectors.real
+        xs[2::3] = np.nan
+        ys[0::3] = 0
+        ys[1::3] = unit_vectors.imag
+        ys[2::3] = np.nan
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines",
+            line=dict(color=color, width=width),
+            opacity=opacity,
+            hoverinfo="skip", showlegend=False,
+        ))
+        # 끝점 마커
+        fig.add_trace(go.Scatter(
+            x=unit_vectors.real, y=unit_vectors.imag,
+            mode="markers",
+            marker=dict(color=color, size=marker_size),
+            opacity=opacity,
+            hoverinfo="skip", showlegend=False,
+        ))
+
+    def update(self, wound: WoundSignal, t_index: int) -> None:
+        """Mode A 인터페이스용 no-op."""
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PartialIntegralComparisonPlot — 여러 partial 적분 trail을 한 3D scene에 비교
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# rect→sinc 노트북 5.2의 Trail A/B/C 비교를 일반화. 각 trail은
+# `(1/2π) ∫_{-Ω}^{ω} kernel(ω')·e^(jω't) dω'` 누적.
+# 사용자가 [(kernel, t, label, color, ...), ...] 형태로 trail들을 명세.
+
+class PartialIntegralComparisonPlot(PlotPanel):
+    """
+    여러 partial 적분 trail을 한 3D scene에 함께 그려 비교.
+
+    좌표: x = ω, (y, z) = (Re partial, Im partial). ω가 진행하면서 trail이
+    어떻게 자라는지 본다. Time shift property 등 적분 동등성 시각 증명에 적합.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from ftvis import signals, FourierAnalyzer, PartialIntegralComparisonPlot
+    >>> sig = signals.rect(width=4)
+    >>> an = FourierAnalyzer(sig, t_min=-3, t_max=3)
+    >>> omegas, X = an.spectrum(omega_min=-30, omega_max=30, n_omega=601)
+    >>> Xs = X * np.exp(-1j * omegas * 1.5)   # X·e^(-jωα)
+    >>> p = PartialIntegralComparisonPlot()
+    >>> p.show_trails(omegas, [
+    ...     {'kernel': X,  't': 0.0, 'label': 'A: X, t=0',         'color': '#7ec699'},
+    ...     {'kernel': Xs, 't': 0.0, 'label': 'B: X·phase, t=0',   'color': '#ffa657'},
+    ...     {'kernel': Xs, 't': 1.5, 'label': 'C: X·phase, t=α',   'color': '#f0f6fc', 'dash': 'dash'},
+    ... ])
+    >>> p.figure  # doctest: +SKIP
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def _build_figure(self) -> go.Figure:
+        fig = _new_3d_figure(title="(partial integral comparison)", height=560)
+        fig.update_layout(
+            scene=dict(
+                xaxis=dict(_3D_AXIS, title="ω"),
+                yaxis=dict(_3D_AXIS, title="Re partial"),
+                zaxis=dict(_3D_AXIS, title="Im partial"),
+                aspectmode="manual",
+                aspectratio=dict(x=2.5, y=1.0, z=1.0),
+                camera=dict(eye=dict(x=2.0, y=1.6, z=1.0)),
+            ),
+            showlegend=True,
+            legend=dict(x=0.02, y=0.98, bgcolor="rgba(13,17,23,0.7)",
+                        bordercolor=_GRID, borderwidth=1),
+        )
+        return fig
+
+    def show_trails(
+        self,
+        omegas: np.ndarray,
+        trails: list[dict],
+        *,
+        label: Optional[str] = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        omegas : NDArray[float64], shape (n,)
+            균등 ω 분할.
+        trails : list of dict
+            각 dict는 다음 키:
+
+            - ``'kernel'`` (ComplexArray, shape (n,)) — 적분 핵 X(jω) 또는
+              X(jω)·e^(-jωα) 같은 변형.
+            - ``'t'`` (float) — 시간 ``e^(jωt)`` 곱하기.
+            - ``'label'`` (str) — legend 라벨.
+            - ``'color'`` (str) — line/marker 색.
+            - ``'width'`` (float, optional, default 4.0) — 선 굵기.
+            - ``'dash'`` (str, optional) — plotly dash style ('dash', 'dot', etc).
+            - ``'marker_symbol'`` (str, optional) — 끝점 마커 심볼.
+        label : str, optional
+            전체 figure 제목.
+        """
+        fig = self.figure
+        fig.data = ()
+
+        omegas = np.asarray(omegas, dtype=np.float64)
+        domega = float(omegas[1] - omegas[0])
+
+        # 중심축 (ω, 0, 0)
+        fig.add_trace(go.Scatter3d(
+            x=[float(omegas[0]), float(omegas[-1])], y=[0, 0], z=[0, 0],
+            mode="lines",
+            line=dict(color=_FG, width=5),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+        # 각 trail
+        all_re: list[float] = []
+        all_im: list[float] = []
+        for spec in trails:
+            kernel = np.asarray(spec["kernel"], dtype=np.complex128)
+            t = float(spec["t"])
+            color = str(spec["color"])
+            label_t = str(spec["label"])
+            width = float(spec.get("width", 4.0))
+            dash = spec.get("dash")
+            marker_symbol = spec.get("marker_symbol", "circle")
+
+            arrows = kernel * np.exp(1j * omegas * t) * domega / (2 * np.pi)
+            cum = np.cumsum(arrows)
+
+            line_kw = dict(color=color, width=width)
+            if dash is not None:
+                line_kw["dash"] = dash
+
+            # 본체 trail
+            fig.add_trace(go.Scatter3d(
+                x=omegas, y=cum.real, z=cum.imag,
+                mode="lines",
+                line=line_kw,
+                name=label_t,
+                hoverinfo="skip",
+            ))
+            # 끝점 마커
+            fig.add_trace(go.Scatter3d(
+                x=[float(omegas[-1])],
+                y=[float(cum[-1].real)],
+                z=[float(cum[-1].imag)],
+                mode="markers",
+                marker=dict(color=color, size=7, symbol=marker_symbol),
+                showlegend=False, hoverinfo="skip",
+            ))
+
+            all_re.extend(cum.real.tolist())
+            all_im.extend(cum.imag.tolist())
+
+        # Re/Im 축 범위 정사각
+        if all_re:
+            re_max = max(abs(v) for v in all_re)
+            im_max = max(abs(v) for v in all_im)
+            lim = max(re_max, im_max, 1.0) * 1.2
+            fig.layout.scene.yaxis.range = [-lim, lim]
+            fig.layout.scene.zaxis.range = [-lim, lim]
+
+        if label is not None:
+            fig.layout.title.text = label
+
+    def update(self, wound: WoundSignal, t_index: int) -> None:
+        """Mode A 인터페이스용 no-op."""
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WoundSpectrumPlot — X(jω)·e^(-jωα) 3D helix + |X| 회전체 envelope
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 시간 도메인의 WoundSignalPlot에 대응되는 주파수 도메인 버전. linear phase가
+# 곱해진 spectrum이 어떻게 helix-like 모양이 되는지 직접 보여줌. envelope =
+# |X(jω)|를 ω축에 회전시킨 회전체.
+
+class WoundSpectrumPlot(PlotPanel):
+    """
+    ``X(jω)·e^(-jωα)``의 3D 시각화. ω축이 한 축, (Re, Im) 두 축.
+
+    helix 본체 = `X(jω)·e^(-jωα)`. envelope 회전체 = `|X(jω)|`를 ω축에 회전
+    (반지름 = |X|). zero crossing(|X|=0)에서 회전체가 ω축에 닿음.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from ftvis import signals, FourierAnalyzer, WoundSpectrumPlot
+    >>> sig = signals.rect(width=4)
+    >>> an = FourierAnalyzer(sig, t_min=-3, t_max=3, n_samples=4000)
+    >>> omegas, X = an.spectrum(omega_min=-6*np.pi, omega_max=6*np.pi)
+    >>> p = WoundSpectrumPlot()
+    >>> p.show_wound_spectrum(omegas, X, alpha=1.5)
+    >>> p.figure  # doctest: +SKIP
+
+    Parameters
+    ----------
+    show_envelope : bool, default True
+        ``|X(jω)|`` 회전체 envelope 표시.
+    envelope_alpha : float, default 0.15
+        envelope 투명도.
+    """
+
+    ENVELOPE_THETA_N = 36
+    ENVELOPE_OMEGA_MAX = 200  # 다운샘플 한도
+
+    def __init__(
+        self,
+        *,
+        show_envelope: bool = True,
+        envelope_alpha: float = 0.15,
+    ) -> None:
+        super().__init__()
+        self.show_envelope = show_envelope
+        self.envelope_alpha = envelope_alpha
+
+    def _build_figure(self) -> go.Figure:
+        fig = _new_3d_figure(title="(wound spectrum)", height=520)
+        # _new_3d_figure는 x축이 't'로 되어 있음; ω 라벨로 갱신
+        fig.update_layout(
+            scene=dict(
+                xaxis=dict(_3D_AXIS, title="ω"),
+                yaxis=dict(_3D_AXIS, title="Re"),
+                zaxis=dict(_3D_AXIS, title="Im"),
+                aspectmode="manual",
+                aspectratio=dict(x=2.5, y=1.0, z=1.0),
+                camera=dict(eye=dict(x=2.0, y=1.6, z=1.0)),
+            ),
+        )
+        return fig
+
+    def show_wound_spectrum(
+        self,
+        omegas: np.ndarray,
+        X: np.ndarray,
+        alpha: float = 0.0,
+        *,
+        label: Optional[str] = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        omegas : NDArray[float64], shape (n,)
+        X : ComplexArray, shape (n,)
+            원본 spectrum.
+        alpha : float, default 0.0
+            linear phase. ``X·e^(-jωα)``로 carrier 추가. 0이면 X 그대로.
+        label : str, optional
+            제목.
+        """
+        fig = self.figure
+        fig.data = ()
+
+        omegas = np.asarray(omegas, dtype=np.float64)
+        X = np.asarray(X, dtype=np.complex128)
+        wound = X * np.exp(-1j * omegas * float(alpha))
+
+        # 중심축 (ω, 0, 0)
+        fig.add_trace(go.Scatter3d(
+            x=[float(omegas[0]), float(omegas[-1])], y=[0, 0], z=[0, 0],
+            mode="lines",
+            line=dict(color=_FG, width=5),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+        # Envelope 회전체 (|X|)
+        if self.show_envelope:
+            n = len(omegas)
+            stride = max(1, n // self.ENVELOPE_OMEGA_MAX)
+            om_ds = omegas[::stride]
+            amp_ds = np.abs(X[::stride])
+            theta = np.linspace(0, 2*np.pi, self.ENVELOPE_THETA_N + 1)
+            T_grid, Th_grid = np.meshgrid(om_ds, theta, indexing="ij")
+            A_grid, _ = np.meshgrid(amp_ds, theta, indexing="ij")
+            fig.add_trace(go.Surface(
+                x=T_grid,
+                y=A_grid * np.cos(Th_grid),
+                z=A_grid * np.sin(Th_grid),
+                colorscale=[[0, _ORANGE], [1, _ORANGE]],
+                showscale=False,
+                opacity=self.envelope_alpha,
+                hoverinfo="skip",
+                lighting=dict(ambient=0.7, diffuse=0.4, specular=0.05),
+            ))
+
+        # Carrier helix
+        fig.add_trace(go.Scatter3d(
+            x=omegas, y=wound.real, z=wound.imag,
+            mode="lines",
+            line=dict(color=_GREEN, width=4),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+        # 제목
+        if label is None:
+            if alpha == 0.0:
+                label = (
+                    f"X(jω) — ω ∈ [{omegas[0]:.3g}, {omegas[-1]:.3g}], "
+                    f"max|X|={float(np.max(np.abs(X))):.3g}"
+                )
+            else:
+                label = (
+                    f"X(jω)·e^(-jω·{alpha:g}) — envelope max={float(np.max(np.abs(X))):.3g}"
+                )
+        fig.layout.title.text = label
+
+    def update(self, wound: WoundSignal, t_index: int) -> None:
+        """Mode A 인터페이스용 no-op."""
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 역변환용 — Inverse winding helix (역변환의 ω-domain winding 회전자)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class InverseWindingHelixPlot(PlotPanel):
+    """e^(+jωt_fix)의 단위 헬릭스 3D — 역변환 winding 회전자.
+
+    순변환에서 `e^(-jωt)`가 *t축 위의 헬릭스*였듯이, 역변환에서는
+    `e^(+jωt_fix)`가 *ω축 위의 헬릭스*다. 각속도가 `t_fix`인 단위 헬릭스.
+    fixed_t의 값에 따라 감기는 속도가 결정되며, ω 따라 단위원을 도는 회전자.
+
+    ``show_helix(omegas, t_fix)``로 데이터를 박는다. update()는 Mode A
+    인터페이스용 no-op.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def _build_figure(self) -> go.Figure:
+        fig = _new_3d_figure(title="(b') e^(+jωt_fix)", height=400)
+        fig.update_layout(
+            scene=dict(
+                xaxis=dict(_3D_AXIS, title="ω"),
+                yaxis=dict(_3D_AXIS, title="Re"),
+                zaxis=dict(_3D_AXIS, title="Im"),
+                aspectmode="manual",
+                aspectratio=dict(x=2.0, y=1.0, z=1.0),
+                camera=dict(eye=dict(x=2.2, y=1.5, z=0.9)),
+            ),
+        )
+        # trace 0: 중심축 (ω, 0, 0)
+        fig.add_trace(_make_central_axis_trace())
+        # trace 1: helix
+        fig.add_trace(go.Scatter3d(
+            x=[], y=[], z=[], mode="lines",
+            line=dict(color=_BLUE, width=4),
+            name="helix",
+        ))
+        return fig
+
+    def show_helix(self, omegas: np.ndarray, t_fix: float) -> None:
+        """ω 범위와 고정 t_fix에서 단위 헬릭스 e^(+jωt_fix)를 박는다."""
+        fig = self.figure
+        omegas = np.asarray(omegas, dtype=float)
+        helix = np.exp(1j * omegas * float(t_fix))
+        _set_central_axis_data(fig.data[0], omegas)
+        fig.data[1].x = omegas
+        fig.data[1].y = helix.real
+        fig.data[1].z = helix.imag
+        fig.layout.title.text = f"(b') e^(+jω·{t_fix:g})"
+
+    def update(self, wound: WoundSignal, t_index: int) -> None:
+        """Mode A 인터페이스용 no-op."""
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 역변환용 — 3D 누적 적분 trail (ω축 위의 running integral)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class InverseIntegral3DPlot(PlotPanel):
+    """역변환 누적 적분 (1/2π)·∫ X(jω)·e^(jωt_fix) dω를 3D 누적 trail로.
+
+    순변환 ForwardIntegralPlot의 ω-domain 대응물.
+      메인 3D 씬:
+        - ω축 위에 누적 끝점이 그리는 trail (ω 진행에 따라 길어짐)
+        - 현재 ω에서 (ω_now, 0, 0)에서 누적 끝점으로 향하는 화살표
+      옵션 2D inset (복소평면): 위에서 본 trail
+
+    ``show_accumulation(omegas, accumulated, ...)``로 데이터 박음.
+    """
+
+    def __init__(self, *, show_complex_plane_inset: bool = True,
+                 trail_alpha: float = 0.4) -> None:
+        super().__init__()
+        self.show_inset = show_complex_plane_inset
+        self.trail_alpha = trail_alpha
+
+    def _build_figure(self) -> go.Figure:
+        fig = go.Figure()
+        if self.show_inset:
+            fig.update_layout(
+                **_DEFAULT_LAYOUT,
+                title=dict(text="(d') ∫ X(jω)·e^(jωt_fix) dω/(2π) — running vector",
+                           x=0.02, xanchor="left", font=dict(color=_FG)),
+                height=520,
+                scene=dict(
+                    domain=dict(x=[0.0, 0.7], y=[0.0, 1.0]),
+                    xaxis=dict(_3D_AXIS, title="ω"),
+                    yaxis=dict(_3D_AXIS, title="Re"),
+                    zaxis=dict(_3D_AXIS, title="Im"),
+                    aspectmode="manual",
+                    aspectratio=dict(x=2.0, y=1.0, z=1.0),
+                    camera=dict(eye=dict(x=2.2, y=1.5, z=0.9)),
+                ),
+                xaxis=dict(_2D_AXIS, title="Re", domain=[0.74, 1.0],
+                           anchor="y", scaleanchor="y", scaleratio=1),
+                yaxis=dict(_2D_AXIS, title="Im", domain=[0.0, 1.0],
+                           anchor="x"),
+            )
+        else:
+            fig.update_layout(
+                **_DEFAULT_LAYOUT,
+                title=dict(text="(d') ∫ X(jω)·e^(jωt_fix) dω/(2π) — running vector",
+                           x=0.02, xanchor="left", font=dict(color=_FG)),
+                height=480,
+                scene=dict(
+                    xaxis=dict(_3D_AXIS, title="ω"),
+                    yaxis=dict(_3D_AXIS, title="Re"),
+                    zaxis=dict(_3D_AXIS, title="Im"),
+                    aspectmode="manual",
+                    aspectratio=dict(x=2.0, y=1.0, z=1.0),
+                    camera=dict(eye=dict(x=2.2, y=1.5, z=0.9)),
+                ),
+            )
+
+        # trace 0: 중심축 (ω, 0, 0)
+        fig.add_trace(_make_central_axis_trace())
+        # trace 1: 3D trail
+        fig.add_trace(go.Scatter3d(
+            x=[], y=[], z=[], mode="lines",
+            line=dict(color=_GREEN, width=3),
+            opacity=self.trail_alpha,
+            name="trail",
+        ))
+        # trace 2: 3D 현재 화살표 (origin → tip)
+        fig.add_trace(go.Scatter3d(
+            x=[], y=[], z=[], mode="lines+markers",
+            line=dict(color=_ORANGE, width=6),
+            marker=dict(color=_ORANGE, size=[3, 7]),
+            name="vector",
+        ))
+        # trace 3, 4 (옵션): 2D inset trail & 화살표
+        if self.show_inset:
+            fig.add_trace(go.Scatter(
+                x=[], y=[], mode="lines",
+                line=dict(color=_GREEN, width=2),
+                opacity=self.trail_alpha,
+                xaxis="x", yaxis="y", name="inset trail",
+            ))
+            fig.add_trace(go.Scatter(
+                x=[], y=[], mode="lines+markers",
+                line=dict(color=_ORANGE, width=3),
+                marker=dict(color=_ORANGE, size=[5, 9]),
+                xaxis="x", yaxis="y", name="inset vector",
+            ))
+        return fig
+
+    def show_accumulation(self,
+                          omegas: np.ndarray,
+                          accumulated: np.ndarray,
+                          *,
+                          progress_index: Optional[int] = None,
+                          flatten_noise: bool = True,
+                          ) -> None:
+        """누적 데이터를 받아 그림.
+
+        Parameters
+        ----------
+        omegas : NDArray[float64], shape (n,)
+            누적 *순서*에 따라 정렬된 ω 배열 (monotonic 권장 — ω축 시각화 일관성).
+        accumulated : ComplexArray, shape (n,)
+            머리 잇기 누적합. accumulated[-1] ≈ x(t_fix).
+        progress_index : int, optional
+            None이면 전부. 정수면 처음 k+1개만.
+        flatten_noise : bool, default True
+            trail의 Re/Im 한 쪽이 ``max|r|`` 대비 1e-9 이하일 때, 즉
+            *수학적으로 0이어야 하는데 부동소수점 노이즈만 남은* 경우, 그 축의
+            범위를 살아 있는 쪽과 동일하게 강제해 trail이 평면(Im=0 또는 Re=0)에
+            누워 보이도록 한다. 실수 신호의 역변환 결과가 *실수 평면* 위로
+            누워 보이게 하는 효과. 데이터 자체는 건드리지 않고 *축 범위만* 조정.
+
+            False면 Plotly 자동 축 범위가 사용돼 ε ~ 1e-16 노이즈가 축 전체를
+            차지해 평면 메시지가 묻힌다.
+        """
+        fig = self.figure
+        omegas = np.asarray(omegas, dtype=float)
+        r = np.asarray(accumulated, dtype=complex)
+        n = r.size
+        if progress_index is None:
+            k = n - 1
+        else:
+            k = int(np.clip(progress_index, 0, n - 1))
+
+        trail_w = omegas[: k + 1]
+        trail_re = r.real[: k + 1]
+        trail_im = r.imag[: k + 1]
+
+        current_w = float(omegas[k])
+        tip_re = float(r.real[k])
+        tip_im = float(r.imag[k])
+
+        _set_central_axis_data(fig.data[0], omegas)
+        fig.data[1].x = trail_w
+        fig.data[1].y = trail_re
+        fig.data[1].z = trail_im
+        fig.data[2].x = [current_w, current_w]
+        fig.data[2].y = [0.0, tip_re]
+        fig.data[2].z = [0.0, tip_im]
+        if self.show_inset:
+            fig.data[3].x = trail_re
+            fig.data[3].y = trail_im
+            fig.data[4].x = [0.0, tip_re]
+            fig.data[4].y = [0.0, tip_im]
+
+        # ── Re/Im 축 범위 결정 ───────────────────────────────────────────────
+        # SpectrumPlot의 flatten_noise와 동일한 패턴. 한 축이 max|r| 대비
+        # NOISE_THRESHOLD 이하면 "수학적으로 0인데 노이즈만 남은 축". 두 축을
+        # 같은 범위로 묶어 trail이 평면처럼 누워 보이게 한다. 데이터 자체는
+        # 그대로 두고 *축 범위만* 조정 — 진짜로 작은 허수성을 보고 싶으면
+        # flatten_noise=False로 끌 수 있음.
+        rmag = float(np.max(np.abs(r))) if r.size else 0.0
+        re_amp = float(np.max(np.abs(r.real))) if r.size else 0.0
+        im_amp = float(np.max(np.abs(r.imag))) if r.size else 0.0
+        NOISE_THRESHOLD = 1e-9
+        if flatten_noise and rmag > 0:
+            re_is_noise = re_amp < rmag * NOISE_THRESHOLD
+            im_is_noise = im_amp < rmag * NOISE_THRESHOLD
+            if re_is_noise or im_is_noise:
+                # 살아 있는 쪽 + 작은 fallback (전부 0인 극단 케이스 대비)
+                live = max(re_amp, im_amp, rmag * 1e-3)
+                lim = live * 1.15  # 15% 패딩
+                fig.layout.scene.yaxis.range = [-lim, lim]
+                fig.layout.scene.zaxis.range = [-lim, lim]
+                if self.show_inset:
+                    fig.layout.xaxis.range = [-lim, lim]
+                    fig.layout.yaxis.range = [-lim, lim]
+            else:
+                # 두 축 모두 살아 있음 — 기존 동작: 한 limit으로 정사각
+                if self.show_inset:
+                    rmax = max(re_amp, im_amp, 1e-3)
+                    pad = rmax * 0.15
+                    lim = rmax + pad
+                    fig.layout.xaxis.range = [-lim, lim]
+                    fig.layout.yaxis.range = [-lim, lim]
+        else:
+            # flatten_noise=False 또는 r이 전부 0
+            if self.show_inset:
+                rmax = max(re_amp, im_amp, 1e-3)
+                pad = rmax * 0.15
+                lim = rmax + pad
+                fig.layout.xaxis.range = [-lim, lim]
+                fig.layout.yaxis.range = [-lim, lim]
+
+        fig.layout.title.text = (
+            f"(d') ∫ X(jω')·e^(jω't_fix) dω'/(2π) "
+            f"— |·| = {abs(complex(tip_re, tip_im)):.3g}"
+        )
+
+    def update(self, wound: WoundSignal, t_index: int) -> None:
+        """Mode A 인터페이스용 no-op."""
+        pass
