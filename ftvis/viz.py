@@ -343,19 +343,20 @@ class WoundSignalPlot(PlotPanel):
         fig.add_trace(go.Scatter3d(x=[], y=[], z=[], mode="lines",
                                    line=dict(color=_GREEN, width=4),
                                    name="wound"))
-        # trace 2: envelope 회전체 — |x(t)|를 t축에 대해 회전시킨 surface.
-        # 빈 placeholder; update에서 실제 메시 채움.
-        fig.add_trace(go.Surface(
-            x=[[0, 0], [0, 0]], y=[[0, 0], [0, 0]], z=[[0, 0], [0, 0]],
-            colorscale=[[0, _ORANGE], [1, _ORANGE]],
-            showscale=False,
-            opacity=0.15,
-            hoverinfo="skip",
-            name="envelope",
-            visible=self.show_envelope,
-            lighting=dict(ambient=0.7, diffuse=0.4, specular=0.05),
-        ))
-        # trace 3: cursor
+        # trace 2 (옵션): envelope 회전체 — |x(t)|를 t축에 대해 회전시킨 surface.
+        # show_envelope=False면 trace 자체를 만들지 않는다 (HTML 출력 시 빈 surface
+        # placeholder가 일부 브라우저/plotly 조합에서 렌더링 막힘을 일으키므로).
+        if self.show_envelope:
+            fig.add_trace(go.Surface(
+                x=[[0, 0], [0, 0]], y=[[0, 0], [0, 0]], z=[[0, 0], [0, 0]],
+                colorscale=[[0, _ORANGE], [1, _ORANGE]],
+                showscale=False,
+                opacity=0.15,
+                hoverinfo="skip",
+                name="envelope",
+                lighting=dict(ambient=0.7, diffuse=0.4, specular=0.05),
+            ))
+        # cursor: show_envelope에 따라 trace index가 2 또는 3
         fig.add_trace(go.Scatter3d(x=[], y=[], z=[], mode="markers",
                                    marker=dict(color=_WHITE, size=5),
                                    name="cursor"))
@@ -395,6 +396,9 @@ class WoundSignalPlot(PlotPanel):
         fig.data[1].x = t
         fig.data[1].y = w.real
         fig.data[1].z = w.imag
+        # trace index: show_envelope에 따라
+        #   envelope=True  → [0:axis, 1:wound, 2:surface, 3:cursor]
+        #   envelope=False → [0:axis, 1:wound, 2:cursor]
         if self.show_envelope:
             # envelope = 원래 신호를 t축에 대해 회전시킨 회전체. 반지름은 |x(t)|.
             # zero crossing에서 회전체가 t축에 정확히 닿는 게 의도된 그림.
@@ -403,12 +407,12 @@ class WoundSignalPlot(PlotPanel):
             fig.data[2].x = X
             fig.data[2].y = Y
             fig.data[2].z = Z
-            fig.data[2].visible = True
+            cursor_idx = 3
         else:
-            fig.data[2].visible = False
-        fig.data[3].x = [float(t[i])]
-        fig.data[3].y = [float(w.real[i])]
-        fig.data[3].z = [float(w.imag[i])]
+            cursor_idx = 2
+        fig.data[cursor_idx].x = [float(t[i])]
+        fig.data[cursor_idx].y = [float(w.real[i])]
+        fig.data[cursor_idx].z = [float(w.imag[i])]
         fig.layout.title.text = f"(c) x(t)·e^(-j·{_omega_pi_label(wound.omega)}·t)"
         vals, labels = _pi_tickvals_and_labels(float(t[0]), float(t[-1]),
                                                wound.omega)
