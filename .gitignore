@@ -1,0 +1,32 @@
+# KaTeX / Jupyter / 기타 캐시
+.cache/
+.ipynb_checkpoints/
+.pytest_cache/
+pytest-cache-files-*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE (이미 추적 중인 .idea/ 항목은 그대로 두지만 신규 항목은 ignore)
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/shelf/
+
+# Editor backups / temp
+*.swp
+*~
+.~lock.*
